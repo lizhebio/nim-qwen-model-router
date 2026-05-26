@@ -1,0 +1,196 @@
+{
+  "base_url": "https://integrate.api.nvidia.com",
+  "providers": {
+    "nvidia": {
+      "name": "nvidia",
+      "base_url": "https://integrate.api.nvidia.com",
+      "api_key_env": "NVIDIA_API_KEY"
+    },
+    "qwen-local": {
+      "name": "qwen-local",
+      "base_url": "http://127.0.0.1:3000/v1",
+      "base_url_env": "QWEN_BASE_URL",
+      "api_key_env": "QWEN_API_KEY"
+    }
+  },
+  "default_timeout_seconds": 120,
+  "poll_interval_seconds": 2,
+  "max_poll_seconds": 300,
+  "routes": [
+    {
+      "capability": "qwen_chat",
+      "description": "Local Qwen chat/reasoning backend.",
+      "model": "Qwen3.5-397B-A17B-FP8",
+      "method": "POST",
+      "path": "/chat/completions",
+      "provider": "qwen-local",
+      "openai_compatible": true,
+      "priority": 2,
+      "match": {
+        "keywords": ["qwen", "千问", "千文", "本地模型", "本地大模型"]
+      }
+    },
+    {
+      "capability": "qwen_embedding",
+      "description": "Local BGE text embedding backend.",
+      "model": "bge-large-zh-v1.5",
+      "method": "POST",
+      "path": "/embeddings",
+      "provider": "qwen-local",
+      "openai_compatible": true,
+      "priority": 82,
+      "match": {
+        "keywords": ["text embedding", "embedding", "embed text", "文本向量", "向量化文本", "bge"]
+      }
+    },
+    {
+      "capability": "vision_chat",
+      "description": "General image understanding and multimodal conversation.",
+      "model": "nvidia/nemotron-nano-12b-v2-vl",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "openai_compatible": true,
+      "priority": 100,
+      "match": {
+        "requires_image": true,
+        "keywords": ["describe image", "what is in this image", "visual question", "chart", "diagram", "screenshot", "看图", "图片里", "截图", "图表"]
+      }
+    },
+    {
+      "capability": "document_parse",
+      "description": "OCR, layout extraction, and document/image parsing.",
+      "model": "nvidia/nemotron-parse",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "openai_compatible": true,
+      "priority": 110,
+      "match": {
+        "requires_image": true,
+        "keywords": ["ocr", "parse", "extract text", "table extraction", "document", "receipt", "invoice", "扫描件", "识别文字", "提取", "表格", "提取表格", "解析文档", "发票"]
+      }
+    },
+    {
+      "capability": "video_generation",
+      "description": "Image-to-video generation with Stable Video Diffusion.",
+      "model": "stabilityai/stable-video-diffusion",
+      "method": "POST",
+      "path": "https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion",
+      "openai_compatible": false,
+      "priority": 93,
+      "match": {
+        "requires_image": true,
+        "keywords": ["generate video", "create video", "image to video", "animate image", "video generation", "生成视频", "视频生成", "图生视频", "动画"]
+      }
+    },
+    {
+      "capability": "image_generation",
+      "description": "Text-to-image generation.",
+      "model": "black-forest-labs/flux.1-schnell",
+      "method": "POST",
+      "path": "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell",
+      "openai_compatible": false,
+      "priority": 90,
+      "match": {
+        "keywords": ["generate image", "create image", "text to image", "image of", "make an image", "draw", "illustration", "poster", "logo concept", "生成图片", "生成一张", "生成个", "生成一个", "画一张", "画个", "画一个", "图片", "图像", "海报", "插画"]
+      }
+    },
+    {
+      "capability": "image_edit",
+      "description": "Image-conditioned generation/editing.",
+      "model": "black-forest-labs/flux.1-kontext-dev",
+      "method": "POST",
+      "path": "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-kontext-dev",
+      "openai_compatible": false,
+      "priority": 92,
+      "match": {
+        "requires_image": true,
+        "keywords": ["edit image", "change background", "remove object", "style transfer", "修图", "换背景", "改成", "去掉"]
+      }
+    },
+    {
+      "capability": "object_detection",
+      "description": "Retail object detection on uploaded video assets.",
+      "model": "nvidia/retail-object-detection",
+      "method": "POST",
+      "path": "https://ai.api.nvidia.com/v1/cv/nvidia/retail-object-detection",
+      "openai_compatible": false,
+      "priority": 88,
+      "match": {
+        "keywords": ["object detection", "detect objects", "retail detection", "检测物体", "目标检测", "物体检测", "商品检测"]
+      }
+    },
+    {
+      "capability": "visual_changenet",
+      "description": "Visual change detection between a reference image and a test image.",
+      "model": "nvidia/visual-changenet",
+      "method": "POST",
+      "path": "https://ai.api.nvidia.com/v1/cv/nvidia/visual-changenet",
+      "openai_compatible": false,
+      "priority": 87,
+      "match": {
+        "keywords": ["visual change", "change detection", "compare images", "before after", "变化检测", "图像变化", "前后对比"]
+      }
+    },
+    {
+      "capability": "sparsedrive",
+      "description": "SparseDrive autonomous-driving scene inference for built-in scenes.",
+      "model": "nvidia/sparsedrive",
+      "method": "POST",
+      "path": "https://ai.api.nvidia.com/v1/sparsedrive/inference",
+      "openai_compatible": false,
+      "priority": 86,
+      "match": {
+        "keywords": ["sparsedrive", "autonomous driving", "driving scene", "scene-0103", "自动驾驶", "驾驶场景"]
+      }
+    },
+    {
+      "capability": "visual_retrieval_embedding",
+      "description": "Create embeddings for image/text retrieval.",
+      "model": "nvidia/llama-nemotron-embed-vl-1b-v2",
+      "method": "POST",
+      "path": "/v1/embeddings",
+      "openai_compatible": true,
+      "priority": 80,
+      "match": {
+        "keywords": ["embed image", "visual search", "similar images", "vector", "embedding", "以图搜图", "相似图片", "向量化"]
+      }
+    },
+    {
+      "capability": "rerank",
+      "description": "Rerank text or multimodal retrieval candidates.",
+      "model": "nvidia/llama-nemotron-rerank-vl-1b-v2",
+      "method": "POST",
+      "path": "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking",
+      "openai_compatible": false,
+      "priority": 75,
+      "match": {
+        "keywords": ["rerank", "re-rank", "rank candidates", "排序候选", "重排", "相关性排序"]
+      }
+    },
+    {
+      "capability": "safety",
+      "description": "Content safety and guardrail checks.",
+      "model": "nvidia/llama-3.1-nemoguard-8b-content-safety",
+      "method": "POST",
+      "path": "/v1/chat/completions",
+      "openai_compatible": true,
+      "priority": 70,
+      "match": {
+        "keywords": ["safety", "policy", "moderation", "guardrail", "unsafe", "合规", "安全审核", "内容安全", "风控"]
+      }
+    },
+    {
+      "capability": "general_chat",
+      "description": "Fallback language reasoning and planning.",
+      "model": "Qwen3.5-397B-A17B-FP8",
+      "method": "POST",
+      "path": "/chat/completions",
+      "provider": "qwen-local",
+      "openai_compatible": true,
+      "priority": 1,
+      "match": {
+        "keywords": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# Runtime data and generated artifacts
+data/
+generated_images/
+*.db
+*.sqlite
+*.sqlite3
+nim_image_*.jpg
+nim_image_*.png
+nim_video_*.mp4
+
+# Local test assets
+nvidia_flux_test.jpg
+nvidia_flux_edit_test.jpg
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
