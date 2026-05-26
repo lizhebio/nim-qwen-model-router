@@ -42,8 +42,6 @@ class NimRouter:
         self.poll_interval = float(config.get("poll_interval_seconds", 2))
         self.max_poll_seconds = float(config.get("max_poll_seconds", 300))
         self.api_key = api_key or os.environ.get("NVIDIA_API_KEY")
-        if not self.api_key and any(item.get("provider", "nvidia") == "nvidia" for item in config["routes"]):
-            raise NimRouterError("Set NVIDIA_API_KEY or pass api_key=... to NimRouter.")
         self.routes = [
             Route(
                 capability=item["capability"],
@@ -505,7 +503,11 @@ class NimRouter:
             return os.environ[str(env_name)]
         if provider.get("api_key"):
             return str(provider["api_key"])
-        return self.api_key
+        if provider.get("name") == "nvidia":
+            if not self.api_key:
+                raise NimRouterError("Set NVIDIA_API_KEY to use NVIDIA NIM routes.")
+            return self.api_key
+        return None
 
     def _looks_async(self, response: Json) -> bool:
         return any(key in response for key in ("status_url", "poll_url", "request_id", "requestId", "id")) and str(
