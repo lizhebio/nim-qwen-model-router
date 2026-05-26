@@ -254,6 +254,17 @@ class NimRouter:
             content = self._assistant_text(response)
             decision = self._parse_json_object(content)
         except Exception as exc:
+            text = content if "content" in locals() else ""
+            recovered = self._recover_capability_from_text(text)
+            if recovered and self._has_capability(recovered):
+                return {
+                    "capability": recovered,
+                    "confidence": 0.45,
+                    "reason": f"Recovered capability from non-JSON planner output; parser error: {exc}",
+                    "planner_model": planner_route.model,
+                    "heuristic_capability": heuristic_route.capability,
+                    "recovered": True,
+                }
             return self._heuristic_decision(heuristic_route, reason=f"Planner failed; used heuristic: {exc}")
 
         capability = str(decision.get("capability") or "")
@@ -686,6 +697,19 @@ class NimRouter:
         if not isinstance(parsed, dict):
             raise NimRouterError("Planner returned non-object JSON.")
         return parsed
+
+    def _recover_capability_from_text(self, text: str) -> str | None:
+        lower = text.lower()
+        capabilities = sorted((route.capability for route in self.routes), key=len, reverse=True)
+        for capability in capabilities:
+            if capability.lower() in lower:
+                return capability
+        for capability in capabilities:
+            dashed = capability.replace("_", "-").lower()
+            spaced = capability.replace("_", " ").lower()
+            if dashed in lower or spaced in lower:
+                return capability
+        return None
 
     def _heuristic_decision(self, route: Route, *, reason: str) -> Json:
         return {
