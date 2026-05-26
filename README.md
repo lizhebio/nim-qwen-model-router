@@ -18,6 +18,91 @@ The original use case is Hermes, but any OpenAI SDK-compatible agent can use it.
 - NVCF asset upload support for NVIDIA CV APIs
 - environment-variable based secrets; no keys in config
 
+## NVIDIA Links
+
+- NVIDIA API catalog: <https://build.nvidia.com/>
+- NVIDIA NIM API reference: <https://docs.api.nvidia.com/nim/reference>
+- NVIDIA visual models APIs: <https://docs.api.nvidia.com/nim/reference/visual-models-apis>
+- NVIDIA Cloud Functions asset API: <https://docs.api.nvidia.com/cloud-functions/reference/createasset>
+- NVIDIA API key management: <https://build.nvidia.com/settings/api-keys>
+
+## Prerequisites
+
+You can run the router with only the local Qwen/BGE backend. NVIDIA credentials are required only for NVIDIA-backed routes such as image generation, vision chat, OCR, rerank, safety, and CV/video APIs.
+
+### 1. NVIDIA Account and API Key
+
+1. Sign in to the NVIDIA API catalog at <https://build.nvidia.com/>.
+2. Open API key settings: <https://build.nvidia.com/settings/api-keys>.
+3. Create an API key.
+4. Export it before starting the router:
+
+```bash
+export NVIDIA_API_KEY="nvapi-..."
+```
+
+Do not commit this key. Keep it in your shell profile, secret manager, launch agent, or local `.env` file that is excluded by `.gitignore`.
+
+Some NVIDIA hosted preview functions are account-gated. If a route returns an error such as:
+
+```text
+Function not found for account
+HTTP 404 Not Found
+```
+
+the router is reaching NVIDIA, but the current NVIDIA account likely does not have access to that hosted function. This is especially common for preview CV/video endpoints.
+
+### 2. NVIDIA Routes That Use Asset Uploads
+
+Some NVIDIA CV APIs do not accept raw base64 media directly. They require uploading images/videos to NVIDIA Cloud Functions assets first, then passing asset IDs in request headers. This router includes helper logic for those routes:
+
+- `nvidia-router/object_detection`
+- `nvidia-router/visual_changenet`
+
+Related NVIDIA docs:
+
+- Asset creation/upload: <https://docs.api.nvidia.com/cloud-functions/reference/createasset>
+- Retail object detection: <https://docs.api.nvidia.com/nim/reference/nvidia-retail-object-detection-infer>
+- Visual ChangeNet: <https://docs.api.nvidia.com/nim/reference/nvidia-visual-changenet-infer>
+
+### 3. Local Qwen/BGE Backend
+
+For reliable default chat and embeddings, run or provide an OpenAI-compatible local gateway with:
+
+- chat model: `Qwen3.5-397B-A17B-FP8`
+- embedding model: `bge-large-zh-v1.5`
+
+The gateway must support:
+
+```text
+GET  /v1/models
+POST /v1/chat/completions
+POST /v1/embeddings
+```
+
+Then export:
+
+```bash
+export QWEN_BASE_URL="http://127.0.0.1:3000/v1"
+export QWEN_API_KEY="..."
+```
+
+If your local gateway does not require an API key, leave `QWEN_API_KEY` unset.
+
+### 4. Artifact Directory
+
+Image and video results are saved locally before being returned as Markdown paths. Choose a writable directory:
+
+```bash
+export NIM_ROUTER_ARTIFACT_DIR="$PWD/artifacts"
+```
+
+For Hermes desktop/local workflows, you may prefer a user-visible directory:
+
+```bash
+export NIM_ROUTER_ARTIFACT_DIR="$HOME/Documents"
+```
+
 ## Virtual Models
 
 | Virtual model | Backend |
@@ -40,9 +125,11 @@ The original use case is Hermes, but any OpenAI SDK-compatible agent can use it.
 
 ## Quick Start
 
-Create an environment file:
+Clone the repository and create an environment file:
 
 ```bash
+git clone git@github.com:lizhebio/nim-qwen-model-router.git
+cd nim-qwen-model-router
 cp .env.example .env
 ```
 
@@ -53,6 +140,13 @@ export NVIDIA_API_KEY="..."
 export QWEN_BASE_URL="http://127.0.0.1:3000/v1"
 export QWEN_API_KEY="..."
 export NIM_ROUTER_ARTIFACT_DIR="$PWD/artifacts"
+```
+
+Optional: validate the config before starting:
+
+```bash
+python3 tools/check_router.py
+python3 -m py_compile nim_router.py openai_compatible_server.py
 ```
 
 Start the local router:
