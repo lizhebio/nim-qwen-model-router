@@ -256,3 +256,4 @@ curl http://127.0.0.1:8010/v1/embeddings \
 - Generated images/videos are saved locally and returned as Markdown-friendly paths.
 - Some NVIDIA hosted preview functions may return `404 Function not found` if the current NVIDIA account does not have access.
 - Do not commit `.env`, generated artifacts, SQLite data, or API keys.
+- Router-R1 was reviewed as a future adaptive-routing reference: [docs/router-r1-notes.md](docs/router-r1-notes.md).
