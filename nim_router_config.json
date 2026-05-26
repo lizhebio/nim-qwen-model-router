@@ -16,6 +16,12 @@
   "default_timeout_seconds": 120,
   "poll_interval_seconds": 2,
   "max_poll_seconds": 300,
+  "adaptive": {
+    "planner_capability": "general_chat",
+    "fanout_capabilities": ["qwen_chat", "general_chat"],
+    "max_fanout_routes": 2,
+    "max_fanout_aggregate_tokens": 1024
+  },
   "routes": [
     {
       "capability": "qwen_chat",
@@ -26,6 +32,13 @@
       "provider": "qwen-local",
       "openai_compatible": true,
       "priority": 2,
+      "metadata": {
+        "modality": ["text"],
+        "latency_class": "local",
+        "cost_weight": 0.0,
+        "account_gated": false,
+        "health_required": true
+      },
       "match": {
         "keywords": ["qwen", "千问", "千文", "本地模型", "本地大模型"]
       }
@@ -39,6 +52,13 @@
       "provider": "qwen-local",
       "openai_compatible": true,
       "priority": 82,
+      "metadata": {
+        "modality": ["text_embedding"],
+        "latency_class": "local",
+        "cost_weight": 0.0,
+        "account_gated": false,
+        "health_required": true
+      },
       "match": {
         "keywords": ["text embedding", "embedding", "embed text", "文本向量", "向量化文本", "bge"]
       }
@@ -51,6 +71,13 @@
       "path": "/v1/chat/completions",
       "openai_compatible": true,
       "priority": 100,
+      "metadata": {
+        "modality": ["text", "image"],
+        "latency_class": "remote",
+        "cost_weight": 1.0,
+        "account_gated": true,
+        "health_required": false
+      },
       "match": {
         "requires_image": true,
         "keywords": ["describe image", "what is in this image", "visual question", "chart", "diagram", "screenshot", "看图", "图片里", "截图", "图表"]
@@ -64,6 +91,13 @@
       "path": "/v1/chat/completions",
       "openai_compatible": true,
       "priority": 110,
+      "metadata": {
+        "modality": ["document", "image", "text"],
+        "latency_class": "remote",
+        "cost_weight": 1.0,
+        "account_gated": true,
+        "health_required": false
+      },
       "match": {
         "requires_image": true,
         "keywords": ["ocr", "parse", "extract text", "table extraction", "document", "receipt", "invoice", "扫描件", "识别文字", "提取", "表格", "提取表格", "解析文档", "发票"]
@@ -77,6 +111,13 @@
       "path": "https://ai.api.nvidia.com/v1/genai/stabilityai/stable-video-diffusion",
       "openai_compatible": false,
       "priority": 93,
+      "metadata": {
+        "modality": ["image", "video"],
+        "latency_class": "remote_slow",
+        "cost_weight": 2.0,
+        "account_gated": true,
+        "health_required": false
+      },
       "match": {
         "requires_image": true,
         "keywords": ["generate video", "create video", "image to video", "animate image", "video generation", "生成视频", "视频生成", "图生视频", "动画"]
@@ -90,6 +131,14 @@
       "path": "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell",
       "openai_compatible": false,
       "priority": 90,
+      "metadata": {
+        "modality": ["text", "image"],
+        "latency_class": "remote",
+        "cost_weight": 1.5,
+        "account_gated": true,
+        "health_required": false,
+        "returns_artifact": true
+      },
       "match": {
         "keywords": ["generate image", "create image", "text to image", "image of", "make an image", "draw", "illustration", "poster", "logo concept", "生成图片", "生成一张", "生成个", "生成一个", "画一张", "画个", "画一个", "图片", "图像", "海报", "插画"]
       }
@@ -102,6 +151,14 @@
       "path": "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-kontext-dev",
       "openai_compatible": false,
       "priority": 92,
+      "metadata": {
+        "modality": ["image"],
+        "latency_class": "remote",
+        "cost_weight": 1.5,
+        "account_gated": true,
+        "health_required": false,
+        "returns_artifact": true
+      },
       "match": {
         "requires_image": true,
         "keywords": ["edit image", "change background", "remove object", "style transfer", "修图", "换背景", "改成", "去掉"]
@@ -115,6 +172,14 @@
       "path": "https://ai.api.nvidia.com/v1/cv/nvidia/retail-object-detection",
       "openai_compatible": false,
       "priority": 88,
+      "metadata": {
+        "modality": ["video", "cv"],
+        "latency_class": "remote",
+        "cost_weight": 1.0,
+        "account_gated": true,
+        "health_required": false,
+        "requires_nvcf_asset": true
+      },
       "match": {
         "keywords": ["object detection", "detect objects", "retail detection", "检测物体", "目标检测", "物体检测", "商品检测"]
       }
@@ -127,6 +192,14 @@
       "path": "https://ai.api.nvidia.com/v1/cv/nvidia/visual-changenet",
       "openai_compatible": false,
       "priority": 87,
+      "metadata": {
+        "modality": ["image", "cv"],
+        "latency_class": "remote",
+        "cost_weight": 1.0,
+        "account_gated": true,
+        "health_required": false,
+        "requires_nvcf_asset": true
+      },
       "match": {
         "keywords": ["visual change", "change detection", "compare images", "before after", "变化检测", "图像变化", "前后对比"]
       }
@@ -139,6 +212,13 @@
       "path": "https://ai.api.nvidia.com/v1/sparsedrive/inference",
       "openai_compatible": false,
       "priority": 86,
+      "metadata": {
+        "modality": ["autonomous_driving", "cv"],
+        "latency_class": "remote",
+        "cost_weight": 1.0,
+        "account_gated": true,
+        "health_required": false
+      },
       "match": {
         "keywords": ["sparsedrive", "autonomous driving", "driving scene", "scene-0103", "自动驾驶", "驾驶场景"]
       }
@@ -151,6 +231,13 @@
       "path": "/v1/embeddings",
       "openai_compatible": true,
       "priority": 80,
+      "metadata": {
+        "modality": ["text_embedding", "image_embedding"],
+        "latency_class": "remote",
+        "cost_weight": 0.5,
+        "account_gated": true,
+        "health_required": false
+      },
       "match": {
         "keywords": ["embed image", "visual search", "similar images", "vector", "embedding", "以图搜图", "相似图片", "向量化"]
       }
@@ -163,6 +250,13 @@
       "path": "https://ai.api.nvidia.com/v1/retrieval/nvidia/llama-nemotron-rerank-vl-1b-v2/reranking",
       "openai_compatible": false,
       "priority": 75,
+      "metadata": {
+        "modality": ["retrieval", "text"],
+        "latency_class": "remote",
+        "cost_weight": 0.5,
+        "account_gated": true,
+        "health_required": false
+      },
       "match": {
         "keywords": ["rerank", "re-rank", "rank candidates", "排序候选", "重排", "相关性排序"]
       }
@@ -175,6 +269,13 @@
       "path": "/v1/chat/completions",
       "openai_compatible": true,
       "priority": 70,
+      "metadata": {
+        "modality": ["text"],
+        "latency_class": "remote",
+        "cost_weight": 0.5,
+        "account_gated": true,
+        "health_required": false
+      },
       "match": {
         "keywords": ["safety", "policy", "moderation", "guardrail", "unsafe", "合规", "安全审核", "内容安全", "风控"]
       }
@@ -188,6 +289,14 @@
       "provider": "qwen-local",
       "openai_compatible": true,
       "priority": 1,
+      "metadata": {
+        "modality": ["text"],
+        "latency_class": "local",
+        "cost_weight": 0.0,
+        "account_gated": false,
+        "health_required": true,
+        "fallback": true
+      },
       "match": {
         "keywords": []
       }

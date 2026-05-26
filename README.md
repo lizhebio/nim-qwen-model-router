@@ -13,7 +13,10 @@ The original use case is Hermes, but any OpenAI SDK-compatible agent can use it.
 - `POST /v1/chat/completions` compatible facade
 - `POST /v1/embeddings` compatible facade
 - `GET /v1/models` model discovery
+- `GET /v1/router/routes` route/provider metadata discovery
 - capability-based routing with virtual model names
+- optional local-Qwen planner routing inspired by Router-R1
+- optional bounded fanout and local-Qwen aggregation for hard text tasks
 - local artifact saving for image/video results
 - NVCF asset upload support for NVIDIA CV APIs
 - environment-variable based secrets; no keys in config
@@ -108,6 +111,8 @@ export NIM_ROUTER_ARTIFACT_DIR="$HOME/Documents"
 | Virtual model | Backend |
 |---|---|
 | `nvidia-router/auto` | automatic routing; normal chat falls back to local Qwen |
+| `nvidia-router/planner` | local Qwen selects one validated capability before dispatch |
+| `nvidia-router/fanout` | bounded text fanout plus local Qwen aggregation |
 | `nvidia-router/qwen_chat` | `Qwen3.5-397B-A17B-FP8` |
 | `nvidia-router/qwen_embedding` | `bge-large-zh-v1.5` |
 | `nvidia-router/general_chat` | `Qwen3.5-397B-A17B-FP8` |
@@ -250,6 +255,40 @@ curl http://127.0.0.1:8010/v1/embeddings \
   -H 'Content-Type: application/json' \
   -d '{"model":"nvidia-router/qwen_embedding","input":"hello"}'
 ```
+
+Inspect route metadata and provider readiness:
+
+```bash
+curl http://127.0.0.1:8010/v1/router/routes
+```
+
+Test local-Qwen planner routing:
+
+```bash
+curl http://127.0.0.1:8010/v1/chat/completions \
+  -H 'Authorization: Bearer local-router-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"nvidia-router/planner","messages":[{"role":"user","content":"生成一张极简风格的细胞实验流程图"}]}'
+```
+
+Test bounded fanout aggregation:
+
+```bash
+curl http://127.0.0.1:8010/v1/chat/completions \
+  -H 'Authorization: Bearer local-router-key' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"nvidia-router/fanout","messages":[{"role":"user","content":"比较确定性路由和自适应路由的优缺点"}]}'
+```
+
+## Adaptive Routing
+
+The Router-R1-inspired pieces are intentionally opt-in:
+
+- `nvidia-router/auto` remains deterministic and is the recommended Hermes default.
+- `nvidia-router/planner` asks local Qwen to choose a capability from the configured route inventory, then the gateway validates the selected capability before dispatching.
+- `nvidia-router/fanout` calls a bounded allowlist of text routes, then asks local Qwen to synthesize the final answer.
+- The planner cannot bypass config, image requirements, provider checks, or route allowlists.
+- Route metadata in `nim_router_config.json` records modality, rough cost weight, latency class, artifact behavior, and account-gated status.
 
 ## Notes
 

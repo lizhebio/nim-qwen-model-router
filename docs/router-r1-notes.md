@@ -160,3 +160,16 @@ For this repository, Router-R1 should be treated as a routing-policy reference r
 5. Avoid routing ordinary text prompts to NVIDIA preview endpoints by default.
 
 This keeps the router reliable today while leaving a clean path toward Router-R1-style adaptive routing later.
+
+## Implemented In This Router
+
+The following Router-R1-inspired pieces have been merged into this repository:
+
+- Route metadata in `nim_router_config.json`, including modality, latency class, rough cost weight, account-gated status, artifact behavior, and NVCF asset requirements.
+- `GET /v1/router/routes`, which exposes route metadata and provider readiness without exposing API keys.
+- `nvidia-router/planner`, an opt-in virtual model that asks local Qwen to choose a capability, then validates that capability before dispatch.
+- `nvidia-router/fanout`, an opt-in bounded fanout/aggregation path for text routes.
+- Basic budget controls in config: `max_fanout_routes` and `max_fanout_aggregate_tokens`.
+- Safer defaults: `nvidia-router/auto` remains deterministic and continues to fall back to local Qwen for normal chat.
+
+The heavier Router-R1 pieces, especially veRL PPO training and vLLM-specific inference, are intentionally not included.

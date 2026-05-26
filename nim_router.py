@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import base64
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import mimetypes
 import json
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +29,7 @@ class Route:
     binary_response: bool
     priority: int
     match: Json
+    metadata: Json
 
 
 class NimRouterError(RuntimeError):
@@ -41,6 +44,7 @@ class NimRouter:
         self.timeout = int(config.get("default_timeout_seconds", 120))
         self.poll_interval = float(config.get("poll_interval_seconds", 2))
         self.max_poll_seconds = float(config.get("max_poll_seconds", 300))
+        self.adaptive = config.get("adaptive", {})
         self.api_key = api_key or os.environ.get("NVIDIA_API_KEY")
         self.routes = [
             Route(
@@ -54,6 +58,7 @@ class NimRouter:
                 binary_response=bool(item.get("binary_response", False)),
                 priority=int(item.get("priority", 0)),
                 match=item.get("match", {}),
+                metadata=item.get("metadata", {}),
             )
             for item in config["routes"]
         ]
@@ -108,6 +113,16 @@ class NimRouter:
         payload_overrides: Json | None = None,
         metadata: Json | None = None,
     ) -> Json:
+        if capability == "planner":
+            return self.invoke_planned(
+                messages,
+                images=images,
+                payload_overrides=payload_overrides,
+                metadata=metadata,
+            )
+        if capability == "fanout":
+            return self.invoke_fanout(messages, payload_overrides=payload_overrides, metadata=metadata)
+
         route = self.select_route(messages, images=images, capability=capability, metadata=metadata)
         payload = self._build_payload(route, messages, images=images, payload_overrides=payload_overrides)
         request_headers = payload.pop("_request_headers", None)
@@ -127,6 +142,198 @@ class NimRouter:
             "capability": route.capability,
             "model": route.model,
             "path": route.path,
+            "metadata": route.metadata,
+        }
+        return response
+
+    def invoke_planned(
+        self,
+        messages: list[Json],
+        *,
+        images: list[str] | None = None,
+        payload_overrides: Json | None = None,
+        metadata: Json | None = None,
+    ) -> Json:
+        decision = self.plan_route(messages, images=images, metadata=metadata)
+        capability = str(decision.get("capability") or "general_chat")
+        if capability in {"planner", "fanout", "qwen_embedding", "visual_retrieval_embedding"}:
+            capability = "general_chat"
+
+        try:
+            route = self.select_route(messages, images=images, capability=capability, metadata=metadata)
+        except NimRouterError:
+            route = self._fallback_route()
+            capability = route.capability
+
+        if route.match.get("requires_image") and not (images or (metadata or {}).get("has_image")):
+            route = self._fallback_route()
+            capability = route.capability
+            decision["fallback_reason"] = "Selected route requires image input."
+
+        response = self.invoke(
+            messages,
+            images=images,
+            capability=capability,
+            payload_overrides=payload_overrides,
+            metadata=metadata,
+        )
+        response.setdefault("_router", {})
+        response["_router"]["planner"] = decision
+        return response
+
+    def plan_route(
+        self,
+        messages: list[Json],
+        *,
+        images: list[str] | None = None,
+        metadata: Json | None = None,
+    ) -> Json:
+        heuristic_route = self.select_route(messages, images=images, metadata=metadata)
+        planner_route = self._route_by_capability("general_chat")
+        if not planner_route:
+            return self._heuristic_decision(heuristic_route, reason="No local planner route is configured.")
+
+        inventory = [
+            {
+                "capability": route.capability,
+                "description": route.description,
+                "modality": route.metadata.get("modality", []),
+                "latency_class": route.metadata.get("latency_class", "unknown"),
+                "account_gated": bool(route.metadata.get("account_gated", False)),
+                "requires_image": bool(route.match.get("requires_image", False)),
+            }
+            for route in self.routes
+            if route.capability not in {"qwen_embedding"}
+        ]
+        prompt = {
+            "task": "Select exactly one router capability for the user request.",
+            "rules": [
+                "Return only JSON.",
+                "Use capability=general_chat for normal conversation, writing, coding, or uncertain requests.",
+                "Do not choose image/video/CV routes unless the user explicitly asks for that modality.",
+                "Do not choose routes that require image input unless the request includes image input.",
+            ],
+            "has_image": bool(images) or bool(metadata and metadata.get("has_image")),
+            "routes": inventory,
+            "response_schema": {
+                "capability": "one capability string from routes",
+                "confidence": "number from 0 to 1",
+                "reason": "short reason",
+            },
+        }
+        planner_messages = [
+            {
+                "role": "system",
+                "content": "You are a strict model-routing planner. Return compact JSON only.",
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "router_instruction": prompt,
+                        "conversation": messages[-6:],
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ]
+
+        try:
+            payload = {
+                "model": planner_route.model,
+                "messages": planner_messages,
+                "temperature": 0,
+                "max_tokens": 400,
+            }
+            response = self._request(
+                planner_route.method,
+                planner_route.path,
+                payload,
+                provider_name=planner_route.provider,
+            )
+            content = self._assistant_text(response)
+            decision = self._parse_json_object(content)
+        except Exception as exc:
+            return self._heuristic_decision(heuristic_route, reason=f"Planner failed; used heuristic: {exc}")
+
+        capability = str(decision.get("capability") or "")
+        if not self._has_capability(capability):
+            return self._heuristic_decision(heuristic_route, reason=f"Planner selected unknown capability: {capability}")
+        decision.setdefault("confidence", 0.5)
+        decision.setdefault("reason", "Selected by local planner.")
+        decision["planner_model"] = planner_route.model
+        decision["heuristic_capability"] = heuristic_route.capability
+        return decision
+
+    def invoke_fanout(
+        self,
+        messages: list[Json],
+        *,
+        payload_overrides: Json | None = None,
+        metadata: Json | None = None,
+    ) -> Json:
+        fanout_capabilities = self._fanout_capabilities(metadata)
+        max_routes = int(self.adaptive.get("max_fanout_routes", 2))
+        max_routes = max(1, min(max_routes, 4))
+        selected_routes = [self.select_route([], capability=capability) for capability in fanout_capabilities[:max_routes]]
+        safe_overrides = {
+            key: value
+            for key, value in (payload_overrides or {}).items()
+            if key in {"temperature", "top_p", "max_tokens", "stop", "seed"}
+        }
+
+        results: list[Json] = []
+        with ThreadPoolExecutor(max_workers=len(selected_routes)) as executor:
+            futures = {
+                executor.submit(self._invoke_route_for_fanout, route, messages, safe_overrides): route
+                for route in selected_routes
+            }
+            for future in as_completed(futures):
+                route = futures[future]
+                try:
+                    results.append({"route": route.capability, "model": route.model, "content": future.result()})
+                except Exception as exc:
+                    results.append({"route": route.capability, "model": route.model, "error": str(exc)})
+
+        aggregator = self._route_by_capability("general_chat")
+        if not aggregator:
+            raise NimRouterError("fanout requires a general_chat route for aggregation.")
+
+        aggregate_prompt = [
+            {
+                "role": "system",
+                "content": (
+                    "You synthesize routed model outputs into one concise final answer. "
+                    "Ignore failed route outputs. Do not mention internal routing unless asked."
+                ),
+            },
+            {
+                "role": "user",
+                "content": json.dumps(
+                    {
+                        "original_conversation": messages,
+                        "routed_outputs": results,
+                    },
+                    ensure_ascii=False,
+                ),
+            },
+        ]
+        payload = {
+            "model": aggregator.model,
+            "messages": aggregate_prompt,
+            "temperature": 0.2,
+            "max_tokens": int(self.adaptive.get("max_fanout_aggregate_tokens", 1024)),
+        }
+        response = self._request(aggregator.method, aggregator.path, payload, provider_name=aggregator.provider)
+        response["_router"] = {
+            "capability": "fanout",
+            "model": aggregator.model,
+            "path": aggregator.path,
+            "fanout": results,
+            "metadata": {
+                "max_routes": max_routes,
+                "source": "router-r1-inspired bounded fanout",
+            },
         }
         return response
 
@@ -403,7 +610,7 @@ class NimRouter:
                 response.read()
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-        raise NimRouterError(f"NVCF asset upload failed: HTTP {exc.code}: {detail}") from exc
+            raise NimRouterError(f"NVCF asset upload failed: HTTP {exc.code}: {detail}") from exc
 
     def embed(self, input_value: Any, *, model: str | None = None, payload_overrides: Json | None = None) -> Json:
         capability = model if model and self._has_capability(model) else "qwen_embedding"
@@ -419,11 +626,104 @@ class NimRouter:
             "capability": route.capability,
             "model": route.model,
             "path": route.path,
+            "metadata": route.metadata,
         }
         return response
 
     def _has_capability(self, capability: str) -> bool:
         return any(route.capability == capability for route in self.routes)
+
+    def _route_by_capability(self, capability: str) -> Route | None:
+        for route in self.routes:
+            if route.capability == capability:
+                return route
+        return None
+
+    def _invoke_route_for_fanout(self, route: Route, messages: list[Json], payload_overrides: Json) -> str:
+        payload = self._build_payload(route, messages, images=None, payload_overrides=payload_overrides)
+        response = self._request(route.method, route.path, payload, provider_name=route.provider)
+        return self._assistant_text(response) or json.dumps(response, ensure_ascii=False)
+
+    def _fanout_capabilities(self, metadata: Json | None) -> list[str]:
+        configured = (metadata or {}).get("fanout_capabilities") or self.adaptive.get("fanout_capabilities")
+        if not configured:
+            configured = ["qwen_chat", "general_chat"]
+        allowed: list[str] = []
+        seen_models: set[tuple[str, str]] = set()
+        for capability in configured:
+            if not isinstance(capability, str) or capability in {"planner", "fanout"}:
+                continue
+            route = self._route_by_capability(capability)
+            if not route or route.match.get("requires_image") or not route.openai_compatible:
+                continue
+            if route.capability in {"qwen_embedding", "visual_retrieval_embedding"}:
+                continue
+            identity = (route.provider, route.model)
+            if identity in seen_models and allowed:
+                continue
+            seen_models.add(identity)
+            allowed.append(route.capability)
+        return allowed or ["general_chat"]
+
+    def _assistant_text(self, response: Json) -> str:
+        choices = response.get("choices")
+        if not isinstance(choices, list) or not choices:
+            return ""
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if not isinstance(message, dict):
+            return ""
+        content = message.get("content")
+        return content if isinstance(content, str) else ""
+
+    def _parse_json_object(self, text: str) -> Json:
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+            if not match:
+                raise
+            parsed = json.loads(match.group(0))
+        if not isinstance(parsed, dict):
+            raise NimRouterError("Planner returned non-object JSON.")
+        return parsed
+
+    def _heuristic_decision(self, route: Route, *, reason: str) -> Json:
+        return {
+            "capability": route.capability,
+            "confidence": 0.4,
+            "reason": reason,
+            "heuristic": True,
+        }
+
+    def route_inventory(self) -> list[Json]:
+        return [
+            {
+                "capability": route.capability,
+                "description": route.description,
+                "model": route.model,
+                "provider": route.provider,
+                "openai_compatible": route.openai_compatible,
+                "priority": route.priority,
+                "match": route.match,
+                "metadata": route.metadata,
+            }
+            for route in self.routes
+        ]
+
+    def provider_status(self) -> Json:
+        status: Json = {}
+        for name, provider in self.providers.items():
+            resolved = self._resolved_provider(provider)
+            api_key_env = provider.get("api_key_env")
+            base_url_env = provider.get("base_url_env")
+            status[name] = {
+                "base_url": resolved.get("base_url"),
+                "api_key_configured": bool(api_key_env and os.environ.get(str(api_key_env))),
+                "api_key_env": api_key_env,
+                "base_url_env": base_url_env,
+                "base_url_overridden": bool(base_url_env and os.environ.get(str(base_url_env))),
+            }
+        return status
 
     def _request(
         self,

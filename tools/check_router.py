@@ -22,6 +22,23 @@ def main() -> int:
         if missing:
             print(f"{route.get('capability', '<unknown>')} missing: {', '.join(sorted(missing))}", file=sys.stderr)
             return 1
+        metadata = route.get("metadata", {})
+        if not isinstance(metadata, dict):
+            print(f"{route['capability']} metadata must be an object", file=sys.stderr)
+            return 1
+        if metadata:
+            if "modality" not in metadata:
+                print(f"{route['capability']} metadata missing modality", file=sys.stderr)
+                return 1
+            if "cost_weight" in metadata and not isinstance(metadata["cost_weight"], (int, float)):
+                print(f"{route['capability']} cost_weight must be numeric", file=sys.stderr)
+                return 1
+
+    adaptive = config.get("adaptive", {})
+    for capability in adaptive.get("fanout_capabilities", []):
+        if capability not in capabilities:
+            print(f"adaptive fanout capability not found: {capability}", file=sys.stderr)
+            return 1
 
     print(f"OK: {len(capabilities)} routes")
     for capability in capabilities:

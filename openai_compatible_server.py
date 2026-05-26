@@ -307,6 +307,9 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
         if self.path.startswith("/v1/models/"):
             self.handle_model()
             return
+        if self.path in {"/v1/router/routes", "/router/routes"}:
+            self.handle_routes()
+            return
         if self.path in {"/v1/props", "/props"}:
             self.write_json({"context_length": 128000})
             return
@@ -331,6 +334,7 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
                     "created": 0,
                     "owned_by": "local-nim-router",
                     "root": route.model,
+                    "metadata": route.metadata,
                 }
                 for route in router.routes
             ]
@@ -342,6 +346,29 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
                     "created": 0,
                     "owned_by": "local-nim-router",
                     "root": "auto",
+                    "metadata": {"routing": "deterministic"},
+                },
+            )
+            data.insert(
+                1,
+                {
+                    "id": f"{ROUTER_MODEL_PREFIX}planner",
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "local-nim-router",
+                    "root": "adaptive-planner",
+                    "metadata": {"routing": "local-qwen-planner"},
+                },
+            )
+            data.insert(
+                2,
+                {
+                    "id": f"{ROUTER_MODEL_PREFIX}fanout",
+                    "object": "model",
+                    "created": 0,
+                    "owned_by": "local-nim-router",
+                    "root": "bounded-fanout",
+                    "metadata": {"routing": "parallel-fanout-aggregate"},
                 },
             )
             self.write_json({"object": "list", "data": data})
@@ -362,6 +389,7 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
                             "created": 0,
                             "owned_by": "local-nim-router",
                             "root": route.model,
+                            "metadata": route.metadata,
                         }
                     )
                     return
@@ -373,10 +401,53 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
                         "created": 0,
                         "owned_by": "local-nim-router",
                         "root": "auto",
+                        "metadata": {"routing": "deterministic"},
+                    }
+                )
+                return
+            if model_id == f"{ROUTER_MODEL_PREFIX}planner":
+                self.write_json(
+                    {
+                        "id": f"{ROUTER_MODEL_PREFIX}planner",
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "local-nim-router",
+                        "root": "adaptive-planner",
+                        "metadata": {"routing": "local-qwen-planner"},
+                    }
+                )
+                return
+            if model_id == f"{ROUTER_MODEL_PREFIX}fanout":
+                self.write_json(
+                    {
+                        "id": f"{ROUTER_MODEL_PREFIX}fanout",
+                        "object": "model",
+                        "created": 0,
+                        "owned_by": "local-nim-router",
+                        "root": "bounded-fanout",
+                        "metadata": {"routing": "parallel-fanout-aggregate"},
                     }
                 )
                 return
             self.write_json({"error": {"message": "Model not found", "type": "not_found"}}, status=404)
+        except NimRouterError as exc:
+            self.write_error(str(exc), status=500)
+
+    def handle_routes(self) -> None:
+        try:
+            router = load_router()
+            self.write_json(
+                {
+                    "object": "router.routes",
+                    "providers": router.provider_status(),
+                    "routes": router.route_inventory(),
+                    "virtual_models": [
+                        f"{ROUTER_MODEL_PREFIX}auto",
+                        f"{ROUTER_MODEL_PREFIX}planner",
+                        f"{ROUTER_MODEL_PREFIX}fanout",
+                    ],
+                }
+            )
         except NimRouterError as exc:
             self.write_error(str(exc), status=500)
 
@@ -395,7 +466,11 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
 
             metadata = dict(body.get("metadata") or {})
             metadata["has_image"] = bool(metadata.get("has_image")) or has_image_content(messages)
-            selected = load_router().select_route(messages, capability=capability, metadata=metadata)
+            router = load_router()
+            if capability in {"planner", "fanout"}:
+                selected = router.select_route(messages, capability="general_chat", metadata=metadata)
+            else:
+                selected = router.select_route(messages, capability=capability, metadata=metadata)
 
             if selected.capability in {"image_generation", "image_edit"}:
                 allowed_overrides = IMAGE_GENERATION_OVERRIDES
@@ -417,7 +492,6 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
             if "max_completion_tokens" in payload_overrides and "max_tokens" not in payload_overrides:
                 payload_overrides["max_tokens"] = payload_overrides.pop("max_completion_tokens")
 
-            router = load_router()
             result = router.invoke(
                 messages,
                 capability=capability,
