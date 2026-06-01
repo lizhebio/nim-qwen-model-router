@@ -14,6 +14,34 @@ from nim_router import NimRouter, NimRouterError
 
 Json = dict[str, Any]
 
+
+def load_env_files() -> None:
+    candidates = [
+        Path("~/.config/nim-qwen-model-router/router.env").expanduser(),
+        Path(".env"),
+    ]
+    explicit = os.environ.get("NIM_ROUTER_ENV_FILE")
+    if explicit:
+        candidates.insert(0, Path(explicit).expanduser())
+
+    for path in candidates:
+        if not path.exists():
+            continue
+        for line in path.read_text(encoding="utf-8").splitlines():
+            item = line.strip()
+            if not item or item.startswith("#") or "=" not in item:
+                continue
+            if item.startswith("export "):
+                item = item[len("export ") :].strip()
+            key, value = item.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("'\"")
+            if key and value and key not in os.environ:
+                os.environ[key] = value
+
+
+load_env_files()
+
 CONFIG_PATH = os.environ.get("NIM_ROUTER_CONFIG", "nim_router_config.json")
 HOST = os.environ.get("NIM_ROUTER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("NIM_ROUTER_PORT", "8010"))

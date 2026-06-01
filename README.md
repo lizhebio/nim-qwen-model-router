@@ -38,13 +38,21 @@ You can run the router with only the local Qwen/BGE backend. NVIDIA credentials 
 1. Sign in to the NVIDIA API catalog at <https://build.nvidia.com/>.
 2. Open API key settings: <https://build.nvidia.com/settings/api-keys>.
 3. Create an API key.
-4. Export it before starting the router:
+4. Put it in the persistent local config file before starting the router:
 
 ```bash
-export NVIDIA_API_KEY="nvapi-..."
+mkdir -p ~/.config/nim-qwen-model-router
+chmod 700 ~/.config/nim-qwen-model-router
+$EDITOR ~/.config/nim-qwen-model-router/router.env
 ```
 
-Do not commit this key. Keep it in your shell profile, secret manager, launch agent, or local `.env` file that is excluded by `.gitignore`.
+Example:
+
+```bash
+NVIDIA_API_KEY="nvapi-..."
+```
+
+Do not commit this key. Keep it in `~/.config/nim-qwen-model-router/router.env`, your shell profile, secret manager, launch agent, or local `.env` file that is excluded by `.gitignore`.
 
 Some NVIDIA hosted preview functions are account-gated. If a route returns an error such as:
 
@@ -88,6 +96,12 @@ Then export:
 ```bash
 export QWEN_BASE_URL="http://127.0.0.1:3000/v1"
 export QWEN_API_KEY="..."
+```
+
+For persistent local use, put these values in:
+
+```text
+~/.config/nim-qwen-model-router/router.env
 ```
 
 If your local gateway does not require an API key, leave `QWEN_API_KEY` unset.
@@ -138,13 +152,21 @@ cd nim-qwen-model-router
 cp .env.example .env
 ```
 
-Set the values you need:
+Set the values you need in the persistent local config:
 
 ```bash
-export NVIDIA_API_KEY="..."
-export QWEN_BASE_URL="http://127.0.0.1:3000/v1"
-export QWEN_API_KEY="..."
-export NIM_ROUTER_ARTIFACT_DIR="$PWD/artifacts"
+mkdir -p ~/.config/nim-qwen-model-router
+chmod 700 ~/.config/nim-qwen-model-router
+$EDITOR ~/.config/nim-qwen-model-router/router.env
+```
+
+Example `router.env`:
+
+```bash
+NVIDIA_API_KEY="..."
+QWEN_BASE_URL="http://127.0.0.1:3000/v1"
+QWEN_API_KEY="..."
+NIM_ROUTER_ARTIFACT_DIR="$PWD/artifacts"
 ```
 
 Optional: validate the config before starting:
@@ -207,7 +229,11 @@ You can keep your local Qwen provider in Hermes for direct fallback/debugging, b
 
 Routes live in `nim_router_config.json`.
 
-Provider secrets and local endpoints are controlled with environment variables:
+Provider secrets and local endpoints are controlled with environment variables. The server automatically loads these files at startup:
+
+1. `NIM_ROUTER_ENV_FILE`, if set
+2. `~/.config/nim-qwen-model-router/router.env`
+3. `.env` in the repository root
 
 | Variable | Purpose |
 |---|---|
