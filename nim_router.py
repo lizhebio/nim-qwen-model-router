@@ -75,6 +75,8 @@ class NimRouter:
         if capability:
             for route in self.routes:
                 if route.capability == capability:
+                    if route.metadata.get("disabled"):
+                        raise NimRouterError(f"Route {capability} is disabled.")
                     if has_tools and not route.metadata.get("supports_tool_calls"):
                         raise NimRouterError(f"Route {capability} does not support tool calls.")
                     return route
@@ -85,6 +87,8 @@ class NimRouter:
 
         scored: list[tuple[int, Route]] = []
         for route in self.routes:
+            if route.metadata.get("disabled"):
+                continue
             match = route.match
             if match.get("requires_image") and not has_image:
                 continue

@@ -18,7 +18,7 @@
   "max_poll_seconds": 300,
   "adaptive": {
     "planner_capability": "general_chat",
-    "fanout_capabilities": ["qwen_chat", "general_chat"],
+    "fanout_capabilities": ["general_chat"],
     "max_fanout_routes": 2,
     "max_fanout_aggregate_tokens": 1024
   },
@@ -38,7 +38,9 @@
         "cost_weight": 0.0,
         "account_gated": false,
         "health_required": true,
-        "supports_tool_calls": false
+        "supports_tool_calls": false,
+        "disabled": true,
+        "disabled_reason": "Local Qwen chat is temporarily blocked from router dispatch."
       },
       "match": {
         "keywords": ["qwen", "千问", "千文", "本地模型", "本地大模型"]
@@ -305,18 +307,18 @@
     },
     {
       "capability": "general_chat",
-      "description": "Fallback language reasoning and planning.",
-      "model": "Qwen3.5-397B-A17B-FP8",
+      "description": "Fallback language reasoning and planning without local Qwen.",
+      "model": "meta/llama-3.3-70b-instruct",
       "method": "POST",
-      "path": "/chat/completions",
-      "provider": "qwen-local",
+      "path": "/v1/chat/completions",
+      "provider": "nvidia",
       "openai_compatible": true,
       "priority": 1,
       "metadata": {
         "modality": ["text"],
-        "latency_class": "local",
-        "cost_weight": 0.0,
-        "account_gated": false,
+        "latency_class": "remote",
+        "cost_weight": 1.0,
+        "account_gated": true,
         "health_required": true,
         "fallback": true,
         "supports_tool_calls": false
