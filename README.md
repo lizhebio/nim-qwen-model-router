@@ -130,6 +130,7 @@ export NIM_ROUTER_ARTIFACT_DIR="$HOME/Documents"
 | `nvidia-router/qwen_chat` | `Qwen3.5-397B-A17B-FP8` |
 | `nvidia-router/qwen_embedding` | `bge-large-zh-v1.5` |
 | `nvidia-router/general_chat` | `Qwen3.5-397B-A17B-FP8` |
+| `nvidia-router/tool_chat` | `meta/llama-3.3-70b-instruct` for OpenAI-compatible tool calls |
 | `nvidia-router/vision_chat` | `nvidia/nemotron-nano-12b-v2-vl` |
 | `nvidia-router/document_parse` | `nvidia/nemotron-parse` |
 | `nvidia-router/image_generation` | `black-forest-labs/flux.1-schnell` |
@@ -252,13 +253,13 @@ Check route configuration:
 python3 tools/check_router.py
 ```
 
-Check Qwen tool-call pass-through through the running router:
+Check tool-call routing through the running router:
 
 ```bash
 python3 tools/check_router.py --live-tool-call
 ```
 
-This sends an OpenAI-compatible `tools` + `tool_choice` request to `nvidia-router/qwen_chat` through `http://127.0.0.1:8010/v1` and fails if the response does not contain `tool_calls`.
+This sends an OpenAI-compatible `tools` + `tool_choice` request to `nvidia-router/auto` through `http://127.0.0.1:8010/v1`. The router should avoid local Qwen for tool calls and route to `nvidia-router/tool_chat`; the check fails if the response does not contain `tool_calls`.
 
 Compile Python files:
 

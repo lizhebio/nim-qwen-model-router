@@ -497,6 +497,7 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
 
             metadata = dict(body.get("metadata") or {})
             metadata["has_image"] = bool(metadata.get("has_image")) or has_image_content(messages)
+            metadata["has_tools"] = bool(metadata.get("has_tools")) or bool(body.get("tools"))
             router = load_router()
             if capability in {"planner", "fanout"}:
                 selected = router.select_route(messages, capability="general_chat", metadata=metadata)

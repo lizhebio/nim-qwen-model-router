@@ -79,7 +79,7 @@ def assert_tool_call_response(payload: dict) -> None:
 def run_live_tool_call_check(base_url: str, api_key: str, timeout: int) -> None:
     url = f"{base_url.rstrip('/')}/chat/completions"
     payload = {
-        "model": "nvidia-router/qwen_chat",
+        "model": "nvidia-router/auto",
         "messages": [
             {
                 "role": "system",
@@ -115,7 +115,7 @@ def run_live_tool_call_check(base_url: str, api_key: str, timeout: int) -> None:
     assert_tool_call_response(response)
     router = response.get("_router", {})
     capability = router.get("capability")
-    if capability not in {"qwen_chat", "general_chat"}:
+    if capability != "tool_chat":
         raise RuntimeError(f"tool call probe routed to unexpected capability: {capability!r}")
 
 
@@ -124,7 +124,7 @@ def main() -> int:
     parser.add_argument(
         "--live-tool-call",
         action="store_true",
-        help="Call the running local router and verify Qwen tool_call pass-through.",
+        help="Call the running local router and verify tool-call routing avoids local Qwen.",
     )
     parser.add_argument(
         "--router-url",
@@ -181,9 +181,18 @@ def main() -> int:
     ]
     for route in qwen_tool_routes:
         metadata = route.get("metadata", {})
-        if not metadata.get("supports_tool_calls"):
-            print(f"{route['capability']} metadata missing supports_tool_calls=true", file=sys.stderr)
+        if metadata.get("supports_tool_calls"):
+            print(f"{route['capability']} should not be marked supports_tool_calls=true", file=sys.stderr)
             return 1
+
+    tool_routes = [
+        route
+        for route in config["routes"]
+        if route.get("metadata", {}).get("supports_tool_calls") and route.get("openai_compatible")
+    ]
+    if not tool_routes:
+        print("No OpenAI-compatible tool-call route is configured", file=sys.stderr)
+        return 1
 
     chat_overrides = load_chat_override_fields(root)
     missing_tool_fields = sorted(CHAT_TOOL_FIELDS - chat_overrides)
@@ -208,7 +217,7 @@ def main() -> int:
         except RuntimeError as exc:
             print(f"Live tool-call check failed: {exc}", file=sys.stderr)
             return 1
-        print("OK: live Qwen tool-call probe")
+        print("OK: live tool-call route probe")
     return 0
 
 

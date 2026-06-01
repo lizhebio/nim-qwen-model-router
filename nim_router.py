@@ -71,9 +71,12 @@ class NimRouter:
         capability: str | None = None,
         metadata: Json | None = None,
     ) -> Route:
+        has_tools = bool(metadata and metadata.get("has_tools"))
         if capability:
             for route in self.routes:
                 if route.capability == capability:
+                    if has_tools and not route.metadata.get("supports_tool_calls"):
+                        raise NimRouterError(f"Route {capability} does not support tool calls.")
                     return route
             raise NimRouterError(f"Unknown capability: {capability}")
 
@@ -84,6 +87,10 @@ class NimRouter:
         for route in self.routes:
             match = route.match
             if match.get("requires_image") and not has_image:
+                continue
+            if match.get("requires_tools") and not has_tools:
+                continue
+            if has_tools and not route.metadata.get("supports_tool_calls"):
                 continue
 
             score = route.priority
@@ -99,6 +106,8 @@ class NimRouter:
                 continue
             scored.append((score, route))
 
+        if not scored and has_tools:
+            raise NimRouterError("No tool-call capable chat route is configured.")
         if not scored:
             return self._fallback_route()
         scored.sort(key=lambda item: item[0], reverse=True)
@@ -784,9 +793,10 @@ class NimRouter:
                 raw = response.read()
                 status_header = response.headers.get("NVCF-STATUS")
                 request_id = response.headers.get("NVCF-REQID")
-                if response.status == 202 or request_id:
+                async_status = str(status_header or "").lower()
+                if response.status == 202 or async_status in {"pending", "running", "submitted", "processing", "queued"}:
                     return {
-                        "status": (status_header or "pending").lower(),
+                        "status": async_status or "pending",
                         "requestId": request_id,
                     }
                 if binary_response:
@@ -838,7 +848,7 @@ class NimRouter:
     def _looks_async(self, response: Json) -> bool:
         return any(key in response for key in ("status_url", "poll_url", "request_id", "requestId", "id")) and str(
             response.get("status", "")
-        ).lower() in {"pending", "running", "submitted", "processing", "queued", "fulfilled"}
+        ).lower() in {"pending", "running", "submitted", "processing", "queued"}
 
     def _poll_until_done(self, response: Json) -> Json:
         poll_url = response.get("status_url") or response.get("poll_url")
