@@ -67,6 +67,9 @@ def assert_tool_call_response(payload: dict) -> None:
             "tool call response did not include tool_calls. "
             f"finish_reason={choices[0].get('finish_reason')!r}, content={content!r}"
         )
+    content = message.get("content")
+    if isinstance(content, str) and "router_tool_call_probe" in content:
+        raise RuntimeError("tool call was also rendered into message.content instead of staying tool_calls-only.")
 
     first = tool_calls[0]
     if not isinstance(first, dict):

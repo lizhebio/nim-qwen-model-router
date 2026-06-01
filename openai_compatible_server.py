@@ -98,13 +98,6 @@ def normalize_chat_response(router_response: Json, requested_model: str, routed_
         response["model"] = requested_model
         response.setdefault("usage", {})
         response["_router"] = router_response.get("_router", {})
-        for choice in response.get("choices", []):
-            message = choice.get("message") if isinstance(choice, dict) else None
-            if not isinstance(message, dict) or message.get("content"):
-                continue
-            extracted = extract_tool_call_text(message)
-            if extracted:
-                message["content"] = extracted
         return response
 
     content = json.dumps(router_response, ensure_ascii=False)
