@@ -37,7 +37,8 @@
         "latency_class": "local",
         "cost_weight": 0.0,
         "account_gated": false,
-        "health_required": true
+        "health_required": true,
+        "supports_tool_calls": true
       },
       "match": {
         "keywords": ["qwen", "千问", "千文", "本地模型", "本地大模型"]
@@ -295,7 +296,8 @@
         "cost_weight": 0.0,
         "account_gated": false,
         "health_required": true,
-        "fallback": true
+        "fallback": true,
+        "supports_tool_calls": true
       },
       "match": {
         "keywords": []

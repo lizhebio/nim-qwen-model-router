@@ -226,6 +226,14 @@ Check route configuration:
 python3 tools/check_router.py
 ```
 
+Check Qwen tool-call pass-through through the running router:
+
+```bash
+python3 tools/check_router.py --live-tool-call
+```
+
+This sends an OpenAI-compatible `tools` + `tool_choice` request to `nvidia-router/qwen_chat` through `http://127.0.0.1:8010/v1` and fails if the response does not contain `tool_calls`.
+
 Compile Python files:
 
 ```bash

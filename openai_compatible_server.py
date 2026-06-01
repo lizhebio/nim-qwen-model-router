@@ -233,6 +233,9 @@ SAFE_CHAT_OVERRIDES = {
     "stop",
     "seed",
     "response_format",
+    "tools",
+    "tool_choice",
+    "parallel_tool_calls",
 }
 
 IMAGE_GENERATION_OVERRIDES = {

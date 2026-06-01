@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib import request
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 
 Json = dict[str, Any]
@@ -804,6 +804,8 @@ class NimRouter:
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise NimRouterError(f"NVIDIA NIM request failed: HTTP {exc.code}: {detail}") from exc
+        except URLError as exc:
+            raise NimRouterError(f"Provider request failed: {exc}") from exc
 
     def _provider_for_path(self, path: str, *, provider_name: str | None = None) -> Json:
         if provider_name and provider_name in self.providers:
