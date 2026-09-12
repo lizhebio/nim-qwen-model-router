@@ -376,7 +376,8 @@ class NimRouter:
                 "prompt": self._last_user_text(messages),
                 "height": 1024,
                 "width": 1024,
-                "steps": 5,
+                "steps": 35,
+                "cfg_scale": 3.5,
                 "samples": 1,
                 "seed": 0,
             }

@@ -598,7 +598,7 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
                 "height": height,
                 "samples": count,
             }
-            for key in ("steps", "seed"):
+            for key in ("steps", "seed", "cfg_scale"):
                 if key in body:
                     overrides[key] = body[key]
 

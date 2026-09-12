@@ -203,6 +203,7 @@ def run_live_image_generation_check(base_url: str, api_key: str, timeout: int) -
         "n": 1,
         "response_format": "url",
         "steps": 5,
+        "cfg_scale": 3.5,
         "seed": 123,
     }
     response = post_json(url, payload, api_key=api_key, timeout=timeout)

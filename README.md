@@ -289,12 +289,13 @@ curl http://127.0.0.1:8010/v1/images/generations \
     "prompt": "a red apple on a white background",
     "size": "768x768",
     "n": 1,
-    "steps": 5,
+    "steps": 35,
+    "cfg_scale": 3.5,
     "seed": 42
   }'
 ```
 
-The image route uses NVIDIA `black-forest-labs/flux.1-dev`, accepts the documented dimensions, saves the returned JPEG under `NIM_ROUTER_ARTIFACT_DIR`, and returns standard `data[].url` entries plus local `path` and `markdown` fields. `response_format: "b64_json"` returns the standard `b64_json` field. The endpoint is implemented locally; it does not call FAL.ai.
+The image route uses NVIDIA `black-forest-labs/flux.1-dev`, accepts the documented dimensions, saves the returned JPEG under `NIM_ROUTER_ARTIFACT_DIR`, and returns standard `data[].url` entries plus local `path` and `markdown` fields. `response_format: "b64_json"` returns the standard `b64_json` field. The quality-oriented defaults are `1024x1024`, `steps: 35`, and `cfg_scale: 3.5`; lower `steps` values are useful only for fast health probes. The endpoint is implemented locally; it does not call FAL.ai.
 
 Hermes image generation is configured to use the same endpoint:
 
