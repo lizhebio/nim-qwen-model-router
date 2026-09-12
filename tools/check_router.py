@@ -194,6 +194,33 @@ def run_live_stream_tool_call_check(base_url: str, api_key: str, timeout: int) -
         raise RuntimeError(f"unexpected streamed tool call: {json.dumps(first, ensure_ascii=False)}")
 
 
+def run_live_image_generation_check(base_url: str, api_key: str, timeout: int) -> None:
+    url = f"{base_url.rstrip('/')}/images/generations"
+    payload = {
+        "model": "nvidia-router/image_generation",
+        "prompt": "a simple red apple on a plain white background",
+        "size": "768x768",
+        "n": 1,
+        "response_format": "url",
+        "steps": 5,
+        "seed": 123,
+    }
+    response = post_json(url, payload, api_key=api_key, timeout=timeout)
+    data = response.get("data")
+    if not isinstance(data, list) or not data:
+        raise RuntimeError(f"image response missing data: {json.dumps(response, ensure_ascii=False)[:1200]}")
+    first = data[0]
+    if not isinstance(first, dict):
+        raise RuntimeError(f"image response item is not an object: {first!r}")
+    path = first.get("path") or first.get("url")
+    if not isinstance(path, str) or not path:
+        raise RuntimeError(f"image response missing local path: {json.dumps(first, ensure_ascii=False)}")
+    if not Path(path).is_file():
+        raise RuntimeError(f"image path does not exist: {path}")
+    if "![generated image](" not in str(first.get("markdown", "")):
+        raise RuntimeError("image response is missing the Markdown image path")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate NIM/Qwen router configuration.")
     parser.add_argument(
@@ -205,6 +232,11 @@ def main() -> int:
         "--live-stream-tool-call",
         action="store_true",
         help="Call the running local router and verify streaming tool-call SSE deltas.",
+    )
+    parser.add_argument(
+        "--live-image-generation",
+        action="store_true",
+        help="Call the running local router and verify standard image generation output and file persistence.",
     )
     parser.add_argument(
         "--router-url",
@@ -305,6 +337,13 @@ def main() -> int:
             print(f"Live streaming tool-call check failed: {exc}", file=sys.stderr)
             return 1
         print("OK: live streaming tool-call route probe")
+    if args.live_image_generation:
+        try:
+            run_live_image_generation_check(args.router_url, args.api_key, args.timeout)
+        except RuntimeError as exc:
+            print(f"Live image-generation check failed: {exc}", file=sys.stderr)
+            return 1
+        print("OK: live image-generation route probe")
     return 0
 
 

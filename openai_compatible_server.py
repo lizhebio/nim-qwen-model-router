@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import base64
+import re
 import time
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -119,12 +120,32 @@ def normalize_chat_response(router_response: Json, requested_model: str, routed_
 
 
 def save_artifacts_as_markdown(router_response: Json) -> str | None:
+    saved = persist_artifacts(router_response)
+    if not saved:
+        return None
+    links: list[str] = []
+    for artifact in saved:
+        artifact_type = artifact["kind"]
+        path = artifact["path"]
+        if artifact_type == "image":
+            links.append(f"Saved image: {path}\n\n![generated image]({path})")
+        elif artifact_type == "video":
+            links.append(f"Saved video: {path}\n\n[generated video]({path})")
+        else:
+            links.append(f"Saved artifact: {path}")
+
+    if not links:
+        return None
+    return "\n\n".join(links)
+
+
+def persist_artifacts(router_response: Json) -> list[Json]:
     artifacts = collect_artifacts(router_response)
     if not artifacts:
-        return None
+        return []
 
     GENERATED_ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
-    links: list[str] = []
+    saved: list[Json] = []
     for index, artifact in enumerate(artifacts):
         if not isinstance(artifact, dict):
             continue
@@ -150,16 +171,18 @@ def save_artifacts_as_markdown(router_response: Json) -> str | None:
         filename = f"nim_{artifact_type}_{time.strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}_{index}.{ext}"
         path = (GENERATED_ARTIFACT_DIR / filename).resolve()
         path.write_bytes(raw)
-        if artifact_type == "image":
-            links.append(f"Saved image: {path}\n\n![generated image]({path})")
-        elif artifact_type == "video":
-            links.append(f"Saved video: {path}\n\n[generated video]({path})")
-        else:
-            links.append(f"Saved artifact: {path}")
-
-    if not links:
-        return None
-    return "\n\n".join(links)
+        saved.append(
+            {
+                "kind": artifact_type,
+                "path": str(path),
+                "mime_type": mime or ("image/jpeg" if artifact_type == "image" else "application/octet-stream"),
+                "base64": base64.b64encode(raw).decode("ascii"),
+                "markdown": f"![generated image]({path})"
+                if artifact_type == "image"
+                else f"[generated {artifact_type}]({path})",
+            }
+        )
+    return saved
 
 
 def collect_artifacts(payload: Any) -> list[Json]:
@@ -342,6 +365,9 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if self.path == "/v1/chat/completions":
             self.handle_chat_completions()
+            return
+        if self.path == "/v1/images/generations":
+            self.handle_image_generations()
             return
         if self.path == "/v1/embeddings":
             self.handle_embeddings()
@@ -530,6 +556,89 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
             self.write_json(response)
         except NimRouterError as exc:
             self.write_error(str(exc), status=502)
+        except json.JSONDecodeError:
+            self.write_error("Invalid JSON request body.", status=400)
+
+    def handle_image_generations(self) -> None:
+        try:
+            body = self.read_json()
+            prompt = body.get("prompt")
+            if not isinstance(prompt, str) or not prompt.strip():
+                self.write_error("`prompt` is required and must be a non-empty string.", status=400)
+                return
+
+            requested_model = str(body.get("model") or f"{ROUTER_MODEL_PREFIX}image_generation")
+            capability = extract_capability(requested_model)
+            if capability in {None, "auto"}:
+                capability = "image_generation"
+            if capability != "image_generation":
+                self.write_error("`/v1/images/generations` only supports the image_generation route.", status=400)
+                return
+
+            size = str(body.get("size") or "1024x1024")
+            match = re.fullmatch(r"(\d+)x(\d+)", size)
+            if not match:
+                self.write_error("`size` must use WIDTHxHEIGHT format, for example `1024x1024`.", status=400)
+                return
+            width, height = int(match.group(1)), int(match.group(2))
+
+            count = body.get("n", 1)
+            if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 4:
+                self.write_error("`n` must be an integer between 1 and 4.", status=400)
+                return
+
+            response_format = str(body.get("response_format") or "url")
+            if response_format not in {"url", "b64_json"}:
+                self.write_error("`response_format` must be `url` or `b64_json`.", status=400)
+                return
+
+            overrides = {
+                "prompt": prompt,
+                "width": width,
+                "height": height,
+                "samples": count,
+            }
+            for key in ("steps", "seed"):
+                if key in body:
+                    overrides[key] = body[key]
+
+            router = load_router()
+            result = router.invoke(
+                [{"role": "user", "content": prompt}],
+                capability=capability,
+                payload_overrides=overrides,
+                metadata={"has_image": False},
+            )
+            saved = persist_artifacts(result)
+            if not saved:
+                self.write_error("Image model returned no image artifacts.", status=502)
+                return
+
+            data = []
+            for artifact in saved[:count]:
+                item = {
+                    "revised_prompt": prompt,
+                    "path": artifact["path"],
+                    "markdown": artifact["markdown"],
+                }
+                if response_format == "b64_json":
+                    item["b64_json"] = artifact["base64"]
+                else:
+                    item["url"] = artifact["path"]
+                data.append(item)
+
+            self.write_json(
+                {
+                    "created": int(time.time()),
+                    "data": data,
+                    "model": requested_model,
+                    "_router": result.get("_router", {}),
+                }
+            )
+        except NimRouterError as exc:
+            self.write_error(str(exc), status=502)
+        except (TypeError, ValueError) as exc:
+            self.write_error(str(exc), status=400)
         except json.JSONDecodeError:
             self.write_error("Invalid JSON request body.", status=400)
 

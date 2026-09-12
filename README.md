@@ -11,6 +11,7 @@ The original use case is Hermes, but any OpenAI SDK-compatible agent can use it.
 ## Features
 
 - `POST /v1/chat/completions` compatible facade
+- `POST /v1/images/generations` OpenAI-compatible image generation facade
 - `POST /v1/embeddings` compatible facade
 - `GET /v1/models` model discovery
 - `GET /v1/router/routes` route/provider metadata discovery
@@ -269,26 +270,43 @@ python3 tools/check_router.py --live-stream-tool-call
 
 The streaming check requires at least one OpenAI-compatible `delta.tool_calls` event, preserves the function name and arguments outside `delta.content`, and requires the final `finish_reason` to be `tool_calls`.
 
-The current NVIDIA tool-call model was selected by live probing rather than trusting `/v1/models` alone. On September 12, 2026, `nvidia/nemotron-3-super-120b-a12b` returned a valid non-streaming tool call and is used by both `tool_chat` and `general_chat`. Other probed candidates may be listed by NVIDIA while returning 404, 410, timeouts, or nonstandard responses for the current account.
-
-Image-generation route test:
+Check the standard OpenAI image-generation endpoint and local file persistence:
 
 ```bash
-curl http://127.0.0.1:8010/v1/chat/completions \
+python3 tools/check_router.py --live-image-generation
+```
+
+The current NVIDIA tool-call model was selected by live probing rather than trusting `/v1/models` alone. On September 12, 2026, `nvidia/nemotron-3-super-120b-a12b` returned a valid non-streaming tool call and is used by both `tool_chat` and `general_chat`. Other probed candidates may be listed by NVIDIA while returning 404, 410, timeouts, or nonstandard responses for the current account.
+
+OpenAI-compatible image-generation route test:
+
+```bash
+curl http://127.0.0.1:8010/v1/images/generations \
   -H 'Authorization: Bearer local-router-key' \
   -H 'Content-Type: application/json' \
   -d '{
     "model": "nvidia-router/image_generation",
-    "messages": [{"role": "user", "content": "生成一张红苹果图片"}],
-    "width": 768,
-    "height": 768,
+    "prompt": "a red apple on a white background",
+    "size": "768x768",
+    "n": 1,
     "steps": 5,
-    "samples": 1,
     "seed": 42
   }'
 ```
 
-The image route uses NVIDIA `black-forest-labs/flux.1-dev`, accepts the documented dimensions, saves the returned JPEG under `NIM_ROUTER_ARTIFACT_DIR`, and returns a Markdown image path. On September 12, 2026, this test returned HTTP 200 and wrote an image under `/Users/pengwanli/Documents/`. The OpenAI-style `/v1/images/generations` endpoint is not registered; use `/v1/chat/completions` with the virtual image-generation model.
+The image route uses NVIDIA `black-forest-labs/flux.1-dev`, accepts the documented dimensions, saves the returned JPEG under `NIM_ROUTER_ARTIFACT_DIR`, and returns standard `data[].url` entries plus local `path` and `markdown` fields. `response_format: "b64_json"` returns the standard `b64_json` field. The endpoint is implemented locally; it does not call FAL.ai.
+
+Hermes image generation is configured to use the same endpoint:
+
+```yaml
+image_gen:
+  backend: nvidia-router
+  base_url: http://127.0.0.1:8010/v1
+  api_key: local-router-key
+  model: nvidia-router/image_generation
+```
+
+The persistent Hermes configuration is `~/.hermes/config.yaml`. Its `image_generate` tool now calls `/v1/images/generations`, so Hermes image generation no longer uses FAL.ai.
 
 Hermes end-to-end `write_file` test:
 
