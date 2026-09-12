@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import base64
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import http.client
 import mimetypes
 import json
 import os
 import re
+import socket
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -374,7 +376,7 @@ class NimRouter:
                 "prompt": self._last_user_text(messages),
                 "height": 1024,
                 "width": 1024,
-                "steps": 4,
+                "steps": 5,
                 "samples": 1,
                 "seed": 0,
             }
@@ -818,7 +820,7 @@ class NimRouter:
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
             raise NimRouterError(f"NVIDIA NIM request failed: HTTP {exc.code}: {detail}") from exc
-        except URLError as exc:
+        except (URLError, http.client.RemoteDisconnected, socket.timeout) as exc:
             raise NimRouterError(f"Provider request failed: {exc}") from exc
 
     def _provider_for_path(self, path: str, *, provider_name: str | None = None) -> Json:

@@ -151,9 +151,9 @@
     {
       "capability": "image_generation",
       "description": "Text-to-image generation.",
-      "model": "black-forest-labs/flux.1-schnell",
+      "model": "black-forest-labs/flux.1-dev",
       "method": "POST",
-      "path": "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-schnell",
+      "path": "https://ai.api.nvidia.com/v1/genai/black-forest-labs/flux.1-dev",
       "openai_compatible": false,
       "priority": 90,
       "metadata": {

@@ -133,7 +133,7 @@ export NIM_ROUTER_ARTIFACT_DIR="$HOME/Documents"
 | `nvidia-router/tool_chat` | `nvidia/nemotron-3-super-120b-a12b` for OpenAI-compatible tool calls |
 | `nvidia-router/vision_chat` | `nvidia/nemotron-nano-12b-v2-vl` |
 | `nvidia-router/document_parse` | `nvidia/nemotron-parse` |
-| `nvidia-router/image_generation` | `black-forest-labs/flux.1-schnell` |
+| `nvidia-router/image_generation` | `black-forest-labs/flux.1-dev` |
 | `nvidia-router/image_edit` | `black-forest-labs/flux.1-kontext-dev` |
 | `nvidia-router/video_generation` | `stabilityai/stable-video-diffusion` |
 | `nvidia-router/object_detection` | `nvidia/retail-object-detection` |
@@ -270,6 +270,25 @@ python3 tools/check_router.py --live-stream-tool-call
 The streaming check requires at least one OpenAI-compatible `delta.tool_calls` event, preserves the function name and arguments outside `delta.content`, and requires the final `finish_reason` to be `tool_calls`.
 
 The current NVIDIA tool-call model was selected by live probing rather than trusting `/v1/models` alone. On September 12, 2026, `nvidia/nemotron-3-super-120b-a12b` returned a valid non-streaming tool call and is used by both `tool_chat` and `general_chat`. Other probed candidates may be listed by NVIDIA while returning 404, 410, timeouts, or nonstandard responses for the current account.
+
+Image-generation route test:
+
+```bash
+curl http://127.0.0.1:8010/v1/chat/completions \
+  -H 'Authorization: Bearer local-router-key' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "nvidia-router/image_generation",
+    "messages": [{"role": "user", "content": "生成一张红苹果图片"}],
+    "width": 768,
+    "height": 768,
+    "steps": 5,
+    "samples": 1,
+    "seed": 42
+  }'
+```
+
+The image route uses NVIDIA `black-forest-labs/flux.1-dev`, accepts the documented dimensions, saves the returned JPEG under `NIM_ROUTER_ARTIFACT_DIR`, and returns a Markdown image path. On September 12, 2026, this test returned HTTP 200 and wrote an image under `/Users/pengwanli/Documents/`. The OpenAI-style `/v1/images/generations` endpoint is not registered; use `/v1/chat/completions` with the virtual image-generation model.
 
 Hermes end-to-end `write_file` test:
 
