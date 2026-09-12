@@ -144,6 +144,20 @@ export NIM_ROUTER_ARTIFACT_DIR="$HOME/Documents"
 | `nvidia-router/rerank` | `nvidia/llama-nemotron-rerank-vl-1b-v2` |
 | `nvidia-router/safety` | `nvidia/llama-3.1-nemoguard-8b-content-safety` |
 
+## Quality Defaults
+
+Generation and CV routes use quality-first defaults where the upstream API exposes useful controls:
+
+| Capability | Default tuning | Rationale |
+|---|---|---|
+| `image_generation` | `1024x1024`, `steps: 35`, `cfg_scale: 3.5`, `samples: 1` | Higher detail and sharper composition for normal use; use lower `steps` only for fast health probes |
+| `image_edit` | `1024x1024`, `steps: 35`, `samples: 1` | Match image-generation quality while avoiding unsupported Flux Kontext parameters |
+| `video_generation` | `motion_bucket_id: 127`, `cfg_scale: 2.5` | Balanced motion strength and prompt adherence for image-to-video |
+| `object_detection` | `threshold: 0.75` | Better recall/precision balance than an overly strict threshold |
+| `rerank` | `truncate: END` | Preserve query-leading relevance context while bounding long passages |
+
+Chat and tool-call routes intentionally do not force global sampling defaults. Callers can pass `temperature`, `top_p`, `max_tokens`, `seed`, and tool-call fields through the OpenAI-compatible request body. Embedding routes also avoid forcing dimensions, because downstream vector stores usually require stable dimensionality.
+
 ## Quick Start
 
 Clone the repository and create an environment file:

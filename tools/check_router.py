@@ -26,6 +26,17 @@ def load_chat_override_fields(root: Path) -> set[str]:
     return {str(item) for item in overrides}
 
 
+def load_quality_defaults(root: Path) -> dict:
+    router_path = root / "nim_router.py"
+    namespace: dict[str, object] = {}
+    source = router_path.read_text(encoding="utf-8")
+    start = source.index("QUALITY_DEFAULTS: dict[str, Json] =")
+    end = source.index("\n\n@dataclass", start)
+    exec("Json = dict\n" + source[start:end], namespace)
+    defaults = namespace.get("QUALITY_DEFAULTS")
+    return defaults if isinstance(defaults, dict) else {}
+
+
 def post_json(url: str, payload: dict, *, api_key: str, timeout: int) -> dict:
     data = json.dumps(payload).encode("utf-8")
     req = request.Request(
@@ -313,6 +324,29 @@ def main() -> int:
         print(f"SAFE_CHAT_OVERRIDES missing tool-call fields: {', '.join(missing_tool_fields)}", file=sys.stderr)
         return 1
 
+    quality_defaults = load_quality_defaults(root)
+    image_defaults = quality_defaults.get("image_generation", {})
+    if image_defaults.get("width") != 1024 or image_defaults.get("height") != 1024:
+        print("image_generation quality defaults should use 1024x1024", file=sys.stderr)
+        return 1
+    if image_defaults.get("steps", 0) < 30:
+        print("image_generation quality defaults should use steps >= 30", file=sys.stderr)
+        return 1
+    if "cfg_scale" not in image_defaults:
+        print("image_generation quality defaults should include cfg_scale", file=sys.stderr)
+        return 1
+
+    video_defaults = quality_defaults.get("video_generation", {})
+    if video_defaults.get("motion_bucket_id") != 127 or video_defaults.get("cfg_scale", 0) < 2.0:
+        print("video_generation defaults should use a balanced motion bucket and cfg_scale", file=sys.stderr)
+        return 1
+
+    detection_defaults = quality_defaults.get("object_detection", {})
+    threshold = detection_defaults.get("threshold")
+    if not isinstance(threshold, (int, float)) or not 0.5 <= threshold <= 0.85:
+        print("object_detection threshold should balance recall and precision", file=sys.stderr)
+        return 1
+
     adaptive = config.get("adaptive", {})
     for capability in adaptive.get("fanout_capabilities", []):
         if capability not in capabilities:
@@ -323,6 +357,7 @@ def main() -> int:
     for capability in capabilities:
         print(f"- {capability}")
     print("OK: chat tool-call fields are passed through")
+    print("OK: quality defaults are configured")
 
     if args.live_tool_call:
         try:

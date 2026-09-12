@@ -19,6 +19,36 @@ from urllib.error import HTTPError, URLError
 Json = dict[str, Any]
 
 
+QUALITY_DEFAULTS: dict[str, Json] = {
+    "image_generation": {
+        "height": 1024,
+        "width": 1024,
+        "steps": 35,
+        "cfg_scale": 3.5,
+        "samples": 1,
+        "seed": 0,
+    },
+    "image_edit": {
+        "height": 1024,
+        "width": 1024,
+        "steps": 35,
+        "samples": 1,
+        "seed": 0,
+    },
+    "video_generation": {
+        "seed": 0,
+        "cfg_scale": 2.5,
+        "motion_bucket_id": 127,
+    },
+    "object_detection": {
+        "threshold": 0.75,
+    },
+    "rerank": {
+        "truncate": "END",
+    },
+}
+
+
 @dataclass(frozen=True)
 class Route:
     capability: str
@@ -374,12 +404,7 @@ class NimRouter:
         if route.capability == "image_generation":
             payload = {
                 "prompt": self._last_user_text(messages),
-                "height": 1024,
-                "width": 1024,
-                "steps": 35,
-                "cfg_scale": 3.5,
-                "samples": 1,
-                "seed": 0,
+                **QUALITY_DEFAULTS["image_generation"],
             }
             if payload_overrides:
                 payload.update(payload_overrides)
@@ -390,11 +415,7 @@ class NimRouter:
             payload = {
                 "prompt": self._last_user_text(messages),
                 "image": self._image_to_url(image) if image else None,
-                "height": 1024,
-                "width": 1024,
-                "steps": 30,
-                "samples": 1,
-                "seed": 0,
+                **QUALITY_DEFAULTS["image_edit"],
             }
             if payload_overrides:
                 payload.update(payload_overrides)
@@ -406,9 +427,7 @@ class NimRouter:
                 raise NimRouterError("video_generation requires an image or image_path.")
             payload = {
                 "image": self._image_to_url(str(image)),
-                "seed": 0,
-                "cfg_scale": 1.8,
-                "motion_bucket_id": 127,
+                **QUALITY_DEFAULTS["video_generation"],
             }
             if payload_overrides:
                 payload.update({k: v for k, v in payload_overrides.items() if k not in {"image_path"}})
@@ -423,7 +442,7 @@ class NimRouter:
                 asset_id = self._upload_asset(str(video_path), description="Retail object detection input video")
             payload = {
                 "input_video": asset_id,
-                "threshold": 0.9,
+                **QUALITY_DEFAULTS["object_detection"],
                 "_request_headers": self._asset_headers(str(asset_id)),
             }
             if payload_overrides:
@@ -510,7 +529,7 @@ class NimRouter:
                 "model": route.model,
                 "query": {"text": self._last_user_text(messages)},
                 "passages": [{"text": self._last_user_text(messages)}],
-                "truncate": "END",
+                **QUALITY_DEFAULTS["rerank"],
             }
             if payload_overrides:
                 payload.update(payload_overrides)
