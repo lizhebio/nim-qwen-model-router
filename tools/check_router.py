@@ -51,6 +51,32 @@ def post_json(url: str, payload: dict, *, api_key: str, timeout: int) -> dict:
         raise RuntimeError(f"Router closed the connection without a response: {exc}") from exc
 
 
+def post_sse(url: str, payload: dict, *, api_key: str, timeout: int) -> list[dict]:
+    data = json.dumps(payload).encode("utf-8")
+    req = request.Request(
+        url,
+        data=data,
+        method="POST",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        },
+    )
+    events: list[dict] = []
+    try:
+        with request.urlopen(req, timeout=timeout) as response:
+            for raw_line in response:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line.startswith("data: ") or line == "data: [DONE]":
+                    continue
+                events.append(json.loads(line[6:]))
+    except (HTTPError, URLError, http.client.RemoteDisconnected) as exc:
+        detail = exc.read().decode("utf-8", errors="replace") if isinstance(exc, HTTPError) else str(exc)
+        raise RuntimeError(f"Streaming request failed: {detail}") from exc
+    return events
+
+
 def assert_tool_call_response(payload: dict) -> None:
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -122,12 +148,63 @@ def run_live_tool_call_check(base_url: str, api_key: str, timeout: int) -> None:
         raise RuntimeError(f"tool call probe routed to unexpected capability: {capability!r}")
 
 
+def run_live_stream_tool_call_check(base_url: str, api_key: str, timeout: int) -> None:
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    payload = {
+        "model": "nvidia-router/auto",
+        "messages": [
+            {"role": "system", "content": "Call the requested tool exactly once."},
+            {"role": "user", "content": "Call router_tool_call_probe with city='Shanghai'."},
+        ],
+        "tools": [{
+            "type": "function",
+            "function": {
+                "name": "router_tool_call_probe",
+                "description": "Streaming probe.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"city": {"type": "string"}},
+                    "required": ["city"],
+                },
+            },
+        }],
+        "tool_choice": {"type": "function", "function": {"name": "router_tool_call_probe"}},
+        "stream": True,
+        "temperature": 0,
+        "max_tokens": 128,
+    }
+    events = post_sse(url, payload, api_key=api_key, timeout=timeout)
+    deltas = []
+    finish_reason = None
+    rendered_content = ""
+    for event in events:
+        for choice in event.get("choices", []):
+            delta = choice.get("delta") or {}
+            rendered_content += delta.get("content") or ""
+            deltas.extend(delta.get("tool_calls") or [])
+            finish_reason = choice.get("finish_reason") or finish_reason
+    if not deltas:
+        raise RuntimeError(f"stream contained no delta.tool_calls: {json.dumps(events, ensure_ascii=False)[:1500]}")
+    if finish_reason != "tool_calls":
+        raise RuntimeError(f"stream finish_reason was {finish_reason!r}, expected 'tool_calls'")
+    if "router_tool_call_probe" in rendered_content:
+        raise RuntimeError("stream rendered tool function name into delta.content")
+    first = deltas[0]
+    if (first.get("function") or {}).get("name") != "router_tool_call_probe":
+        raise RuntimeError(f"unexpected streamed tool call: {json.dumps(first, ensure_ascii=False)}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate NIM/Qwen router configuration.")
     parser.add_argument(
         "--live-tool-call",
         action="store_true",
         help="Call the running local router and verify tool-call routing avoids local Qwen.",
+    )
+    parser.add_argument(
+        "--live-stream-tool-call",
+        action="store_true",
+        help="Call the running local router and verify streaming tool-call SSE deltas.",
     )
     parser.add_argument(
         "--router-url",
@@ -221,6 +298,13 @@ def main() -> int:
             print(f"Live tool-call check failed: {exc}", file=sys.stderr)
             return 1
         print("OK: live tool-call route probe")
+    if args.live_stream_tool_call:
+        try:
+            run_live_stream_tool_call_check(args.router_url, args.api_key, args.timeout)
+        except RuntimeError as exc:
+            print(f"Live streaming tool-call check failed: {exc}", file=sys.stderr)
+            return 1
+        print("OK: live streaming tool-call route probe")
     return 0
 
 

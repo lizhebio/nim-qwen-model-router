@@ -124,13 +124,13 @@ export NIM_ROUTER_ARTIFACT_DIR="$HOME/Documents"
 
 | Virtual model | Backend |
 |---|---|
-| `nvidia-router/auto` | automatic routing; normal chat falls back to local Qwen |
+| `nvidia-router/auto` | automatic routing; normal chat falls back to NVIDIA `nvidia/nemotron-3-super-120b-a12b` |
 | `nvidia-router/planner` | local Qwen selects one validated capability before dispatch |
 | `nvidia-router/fanout` | bounded text fanout plus local Qwen aggregation |
-| `nvidia-router/qwen_chat` | `Qwen3.5-397B-A17B-FP8` |
+| `nvidia-router/qwen_chat` | `Qwen3.5-397B-A17B-FP8` (disabled for chat/tool dispatch) |
 | `nvidia-router/qwen_embedding` | `bge-large-zh-v1.5` |
-| `nvidia-router/general_chat` | `Qwen3.5-397B-A17B-FP8` |
-| `nvidia-router/tool_chat` | `meta/llama-3.3-70b-instruct` for OpenAI-compatible tool calls |
+| `nvidia-router/general_chat` | `nvidia/nemotron-3-super-120b-a12b` |
+| `nvidia-router/tool_chat` | `nvidia/nemotron-3-super-120b-a12b` for OpenAI-compatible tool calls |
 | `nvidia-router/vision_chat` | `nvidia/nemotron-nano-12b-v2-vl` |
 | `nvidia-router/document_parse` | `nvidia/nemotron-parse` |
 | `nvidia-router/image_generation` | `black-forest-labs/flux.1-schnell` |
@@ -260,6 +260,25 @@ python3 tools/check_router.py --live-tool-call
 ```
 
 This sends an OpenAI-compatible `tools` + `tool_choice` request to `nvidia-router/auto` through `http://127.0.0.1:8010/v1`. The router should avoid local Qwen for tool calls and route to `nvidia-router/tool_chat`; the check fails if the response does not contain `tool_calls`.
+
+Check streaming tool-call deltas:
+
+```bash
+python3 tools/check_router.py --live-stream-tool-call
+```
+
+The streaming check requires at least one OpenAI-compatible `delta.tool_calls` event, preserves the function name and arguments outside `delta.content`, and requires the final `finish_reason` to be `tool_calls`.
+
+The current NVIDIA tool-call model was selected by live probing rather than trusting `/v1/models` alone. On September 12, 2026, `nvidia/nemotron-3-super-120b-a12b` returned a valid non-streaming tool call and is used by both `tool_chat` and `general_chat`. Other probed candidates may be listed by NVIDIA while returning 404, 410, timeouts, or nonstandard responses for the current account.
+
+Hermes end-to-end `write_file` test:
+
+```bash
+hermes chat -Q --yolo --max-turns 12 -t file \
+  -q '请使用 write_file 工具创建文件 /Users/pengwanli/Documents/hermes-router-e2e.md，内容为：Hermes router end to end test。'
+```
+
+Hermes is configured persistently in `~/.hermes/config.yaml` with `provider: custom`, `base_url: http://127.0.0.1:8010/v1`, and `model: nvidia-router/auto`. The test should create the requested file through a structured tool call, rather than rendering the tool call as assistant text.
 
 Compile Python files:
 

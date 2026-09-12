@@ -69,7 +69,7 @@
     {
       "capability": "tool_chat",
       "description": "Tool-calling chat backend for Hermes/OpenAI-compatible function calls.",
-      "model": "meta/llama-3.3-70b-instruct",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
       "method": "POST",
       "path": "/v1/chat/completions",
       "provider": "nvidia",
@@ -308,7 +308,7 @@
     {
       "capability": "general_chat",
       "description": "Fallback language reasoning and planning without local Qwen.",
-      "model": "meta/llama-3.3-70b-instruct",
+      "model": "nvidia/nemotron-3-super-120b-a12b",
       "method": "POST",
       "path": "/v1/chat/completions",
       "provider": "nvidia",

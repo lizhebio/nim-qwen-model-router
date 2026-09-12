@@ -585,6 +585,7 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
         choice = response.get("choices", [{}])[0]
         message = choice.get("message") or {}
         content = message.get("content") or ""
+        tool_calls = message.get("tool_calls") or []
         chunk_id = f"chatcmpl-router-stream-{uuid.uuid4().hex}"
         created = int(time.time())
         model = response.get("model") or f"{ROUTER_MODEL_PREFIX}auto"
@@ -614,13 +615,54 @@ class OpenAICompatibleHandler(BaseHTTPRequestHandler):
                     "choices": [{"index": 0, "delta": {"content": content}, "finish_reason": None}],
                 }
             )
+        if isinstance(tool_calls, list):
+            for fallback_index, tool_call in enumerate(tool_calls):
+                if not isinstance(tool_call, dict):
+                    continue
+                function = tool_call.get("function")
+                if not isinstance(function, dict):
+                    continue
+                function_delta = {}
+                if isinstance(function.get("name"), str):
+                    function_delta["name"] = function["name"]
+                if isinstance(function.get("arguments"), str):
+                    function_delta["arguments"] = function["arguments"]
+                delta_tool_call = {
+                    "index": tool_call.get("index", fallback_index),
+                    "type": tool_call.get("type", "function"),
+                    "function": function_delta,
+                }
+                if isinstance(tool_call.get("id"), str):
+                    delta_tool_call["id"] = tool_call["id"]
+                self.write_sse(
+                    {
+                        "id": chunk_id,
+                        "object": "chat.completion.chunk",
+                        "created": created,
+                        "model": model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"tool_calls": [delta_tool_call]},
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                )
         self.write_sse(
             {
                 "id": chunk_id,
                 "object": "chat.completion.chunk",
                 "created": created,
                 "model": model,
-                "choices": [{"index": 0, "delta": {}, "finish_reason": choice.get("finish_reason") or "stop"}],
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {},
+                        "finish_reason": choice.get("finish_reason")
+                        or ("tool_calls" if tool_calls else "stop"),
+                    }
+                ],
             }
         )
         self.wfile.write(b"data: [DONE]\n\n")
